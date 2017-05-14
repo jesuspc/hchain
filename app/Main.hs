@@ -13,9 +13,9 @@ type Hash = String
 type BNum = Int
 type BNonce = Int
 newtype SimpleBContent = SimpleBContent String deriving (Show)
-data Block = Block { _num :: BNum, _nonce :: BNonce, _content :: SimpleBContent, _prevH :: Hash, _bHash :: Hash } deriving (Show)
+data Block a = Block { _num :: BNum, _nonce :: BNonce, _content :: a, _prevH :: Hash, _bHash :: Hash } deriving (Show)
 $(makeLenses ''Block)
-type BlockChain = [Block]
+type BlockChain a = [a]
 
 class BContent a where
   serial :: a -> String
@@ -26,37 +26,37 @@ instance BContent SimpleBContent where
 main :: IO ()
 main = do
   stuff <- Prelude.getLine
-  let initialChain = mkInitialChain
+  let initialChain = mkInitialChain (SimpleBContent "")
   let blockchain = addBlock (SimpleBContent stuff) initialChain
   mapM_ print blockchain
 
-mkInitialChain :: BlockChain
-mkInitialChain = [mine mkInitialBlock]
+mkInitialChain :: BContent a => a -> BlockChain (Block a)
+mkInitialChain content = [mine (mkInitialBlock content)]
 
-mkInitialBlock :: Block
-mkInitialBlock = Block 1 1 (SimpleBContent "") emptyHash emptyHash
+mkInitialBlock :: BContent a => a -> Block a
+mkInitialBlock content = Block 1 1 content emptyHash emptyHash
   where emptyHash = "0000000000000000000000000000000000000000000000000000000000000000"
 
-isValidChain :: BlockChain -> Bool
+isValidChain :: BContent a => BlockChain (Block a) -> Bool
 isValidChain = all $ checkSignature . view bHash
 
-addBlock :: SimpleBContent -> BlockChain -> BlockChain
+addBlock :: BContent a => a -> BlockChain (Block a) -> BlockChain (Block a)
 addBlock content chain@(x:xs) = nextBlock : chain
   where nextBlock = mine $ mkBlock (x ^. num + 1) content (x ^. bHash)
 
-mkBlock :: BNum -> SimpleBContent -> Hash -> Block
+mkBlock :: BContent a => BNum -> a -> Hash -> Block a
 mkBlock n content prevh = Block n 1 content prevh ""
 
-hash :: Block -> Hash
+hash :: BContent a => Block a -> Hash
 hash block = showDigest $ sha256 (C8.pack (serialize block))
 
-serialize :: Block -> String
+serialize :: BContent a => Block a -> String
 serialize block = show (block ^. num) ++ show (block ^. nonce) ++ serial (block ^. content) ++ block ^. prevH
 
 checkSignature :: Hash -> Bool
 checkSignature = startswith "0000"
 
-mine :: Block -> Block
+mine :: BContent a => Block a -> Block a
 mine block
   | checkSignature computedHash = block & bHash .~ computedHash
   | otherwise = mine (block & nonce +~ 1)
