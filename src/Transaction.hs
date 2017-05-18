@@ -1,7 +1,10 @@
 module Transaction where
 
 import           BlockChain      (BContent (..))
+import           Control.Lens
+import           Data.Map.Lens
 import qualified Data.Map.Strict as Map
+import           Data.Maybe      (fromJust)
 
 type State = Map.Map Actor TokenAmount
 type Actor = String
@@ -14,5 +17,20 @@ instance BContent Transaction where
   serial (Coinbase n r)      = "Coinbase " ++ show n ++ show r
   serial (Transaction n r s) = "Tx " ++ show n ++ show r ++ show s
 
-applyTransaction :: Transaction -> State -> (Maybe [Transaction], State)
-applyTransaction = undefined
+initialState :: State
+initialState = Map.insert "foo" 1 Map.empty
+
+applyTransaction :: Transaction -> State -> (Maybe Transaction, State)
+applyTransaction tx s = case tx of
+                          (Coinbase n r) -> (Just tx, s & at r %~ increaseValue n)
+                          (Transaction n r se) -> applyTransaction' n r se
+  where
+    amount Nothing  = 0
+    amount (Just v) = v
+    increaseValue v oldV = Just (amount oldV + v)
+    decreaseValue v oldV = Just (amount oldV - v)
+    applyTransaction' n' r' se'
+      | amount (finalS ^. at se') < 0 = (Nothing, s)
+      | otherwise = (Just tx, finalS)
+      where
+        finalS = (s & at r' %~ increaseValue n') & at se' %~ decreaseValue n'
