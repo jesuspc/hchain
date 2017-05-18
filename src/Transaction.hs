@@ -11,7 +11,7 @@ type Actor = String
 type Recipient = Actor
 type Sender = Actor
 type TokenAmount = Int
-data Transaction = Coinbase TokenAmount Recipient | Transaction TokenAmount Recipient Sender deriving (Show)
+data Transaction = Coinbase TokenAmount Recipient | Transaction TokenAmount Sender Recipient deriving (Show)
 
 instance BContent Transaction where
   serial (Coinbase n r)      = "Coinbase " ++ show n ++ show r
@@ -23,13 +23,13 @@ initialState = Map.insert "foo" 1 Map.empty
 applyTransaction :: Transaction -> State -> (Maybe Transaction, State)
 applyTransaction tx s = case tx of
                           (Coinbase n r) -> (Just tx, s & at r %~ increaseValue n)
-                          (Transaction n r se) -> applyTransaction' n r se
+                          (Transaction n se r) -> applyTransaction' n se r
   where
     amount Nothing  = 0
     amount (Just v) = v
     increaseValue v oldV = Just (amount oldV + v)
     decreaseValue v oldV = Just (amount oldV - v)
-    applyTransaction' n' r' se'
+    applyTransaction' n' se' r'
       | amount (finalS ^. at se') < 0 = (Nothing, s)
       | otherwise = (Just tx, finalS)
       where
