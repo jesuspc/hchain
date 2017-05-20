@@ -4,6 +4,7 @@ import qualified Data.ByteString.Lazy.Char8 as C8
 import           Control.Lens
 import           Data.Digest.Pure.SHA       (sha256, showDigest)
 import           Data.String.Utils          (startswith)
+import Data.Maybe (fromJust)
 
 type Hash = String
 type BNum = Int
@@ -14,10 +15,17 @@ type BlockChain a = [a]
 
 class BContent a where
   serial :: a -> String
-  validContent :: a -> BlockChain (Block a) -> Bool
+  mApply :: a -> [a] -> (a -> b) -> Maybe b
 
 instance BContent a => BContent [a] where
   serial = concatMap serial
+  mApply xs xys cont = undefined
+
+-- splitChain :: BlockChain (Block [a1]) -> (a1 -> a) -> BlockChain a
+-- splitChain xs cont = splittedChain xs []
+--   where
+--     splittedChain [] acc = acc
+--     splittedChain (x:xs) acc = splittedChain xs (map cont (_content x) ++ acc)
 
 mkInitialChain :: BContent a => a -> BlockChain (Block a)
 mkInitialChain content = [mine (mkInitialBlock content)]
@@ -31,12 +39,15 @@ isValidChain = all $ checkSignature . view bHash
 
 addBlock :: BContent a => a -> BlockChain (Block a) -> Maybe (BlockChain (Block a))
 addBlock content chain@(x:xs)
-  | validContent content chain = Just (nextBlock : chain)
-  | otherwise = Nothing
-  where nextBlock = mine $ mkBlock (x ^. num + 1) content (x ^. bHash)
+  | null contentBlock = Nothing
+  | otherwise = Just $ mine (fromJust contentBlock) : chain
+  where
+    contentBlock = mApply content contents cont
+    cont = mkBlock (x ^. num + 1) (x ^. bHash)
+    contents = reverse $ map _content chain
 
-mkBlock :: BContent a => BNum -> a -> Hash -> Block a
-mkBlock n content prevh = Block n 1 content prevh ""
+mkBlock :: BContent a => BNum -> Hash -> a -> Block a
+mkBlock n prevh content = Block n 1 content prevh ""
 
 hash :: BContent a => Block a -> Hash
 hash block = showDigest $ sha256 (C8.pack (serialize block))

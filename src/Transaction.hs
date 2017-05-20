@@ -1,4 +1,4 @@
-module Transaction (calculateState, Transaction (..)) where
+module Transaction (foldChain, Transaction (..)) where
 
 import           BlockChain      (BContent (..), Block (..), BlockChain,
                                   content)
@@ -18,18 +18,24 @@ instance BContent Transaction where
   serial (Coinbase n r)      = "Coinbase " ++ show n ++ show r
   serial (Transaction n r s) = "Tx " ++ show n ++ show r ++ show s
 
-  validContent content = not . null . applyTransaction content . calculateState
+  mApply tx txs cont = foldTxs txs >>= applyTransaction tx >> (Just $ cont tx)
 
 initialState :: State
 initialState = Map.empty
 
-calculateState :: BlockChain (Block Transaction) -> State
-calculateState chain = calculateState' reversedChain initialState
+foldChain :: BlockChain (Block Transaction) -> State
+foldChain chain = foldChain' reversedChain initialState
   where
     reversedChain = reverse chain
-    calculateState' [] state = state
-    calculateState' (x:xs) state = calculateState' xs (fromJust (applyTransaction (x ^. content) state))
+    foldChain' xs state = foldl
+        (\ state x -> fromJust (applyTransaction (x ^. content) state)) state xs
 
+foldTxs :: [Transaction] -> Maybe State
+foldTxs = foldTxs' (Just initialState)
+  where
+    foldTxs' = foldl applyTx
+    applyTx Nothing _       = Nothing
+    applyTx (Just state) tx = applyTransaction tx state
 
 applyTransaction :: Transaction -> State -> Maybe State
 applyTransaction tx s = case tx of
