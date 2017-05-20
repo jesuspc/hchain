@@ -1,4 +1,4 @@
-module BlockChain (BlockChain, Block, BContent (..), isValidChain, addBlock, mkInitialChain) where
+module BlockChain (BlockChain, Block (..), content, BContent (..), isValidChain, addBlock, mkInitialChain) where
 
 import qualified Data.ByteString.Lazy.Char8 as C8
 import           Control.Lens
@@ -14,6 +14,7 @@ type BlockChain a = [a]
 
 class BContent a where
   serial :: a -> String
+  validContent :: a -> BlockChain (Block a) -> Bool
 
 instance BContent a => BContent [a] where
   serial = concatMap serial
@@ -28,8 +29,10 @@ mkInitialBlock content = Block 1 1 content emptyHash emptyHash
 isValidChain :: BContent a => BlockChain (Block a) -> Bool
 isValidChain = all $ checkSignature . view bHash
 
-addBlock :: BContent a => a -> BlockChain (Block a) -> BlockChain (Block a)
-addBlock content chain@(x:xs) = nextBlock : chain
+addBlock :: BContent a => a -> BlockChain (Block a) -> Maybe (BlockChain (Block a))
+addBlock content chain@(x:xs)
+  | validContent content chain = Just (nextBlock : chain)
+  | otherwise = Nothing
   where nextBlock = mine $ mkBlock (x ^. num + 1) content (x ^. bHash)
 
 mkBlock :: BContent a => BNum -> a -> Hash -> Block a

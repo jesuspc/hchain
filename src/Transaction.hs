@@ -1,6 +1,7 @@
-module Transaction where
+module Transaction (calculateState, Transaction (..)) where
 
-import           BlockChain      (BContent (..))
+import           BlockChain      (BContent (..), Block (..), BlockChain,
+                                  content)
 import           Control.Lens
 import           Data.Map.Lens
 import qualified Data.Map.Strict as Map
@@ -17,12 +18,22 @@ instance BContent Transaction where
   serial (Coinbase n r)      = "Coinbase " ++ show n ++ show r
   serial (Transaction n r s) = "Tx " ++ show n ++ show r ++ show s
 
-initialState :: State
-initialState = Map.insert "foo" 1 Map.empty
+  validContent content = not . null . applyTransaction content . calculateState
 
-applyTransaction :: Transaction -> State -> (Maybe Transaction, State)
+initialState :: State
+initialState = Map.empty
+
+calculateState :: BlockChain (Block Transaction) -> State
+calculateState chain = calculateState' reversedChain initialState
+  where
+    reversedChain = reverse chain
+    calculateState' [] state = state
+    calculateState' (x:xs) state = calculateState' xs (fromJust (applyTransaction (x ^. content) state))
+
+
+applyTransaction :: Transaction -> State -> Maybe State
 applyTransaction tx s = case tx of
-                          (Coinbase n r) -> (Just tx, s & at r %~ increaseValue n)
+                          (Coinbase n r) -> Just (s & at r %~ increaseValue n)
                           (Transaction n se r) -> applyTransaction' n se r
   where
     amount Nothing  = 0
@@ -30,7 +41,7 @@ applyTransaction tx s = case tx of
     increaseValue v oldV = Just (amount oldV + v)
     decreaseValue v oldV = Just (amount oldV - v)
     applyTransaction' n' se' r'
-      | amount (finalS ^. at se') < 0 = (Nothing, s)
-      | otherwise = (Just tx, finalS)
+      | amount (finalS ^. at se') < 0 = Nothing
+      | otherwise = Just finalS
       where
         finalS = (s & at r' %~ increaseValue n') & at se' %~ decreaseValue n'
