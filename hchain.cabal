@@ -28,6 +28,7 @@ library
   default-language:    Haskell2010
   extensions:          OverloadedStrings
                      , TemplateHaskell
+                     , FlexibleInstances
 
 executable hchain-exe
   hs-source-dirs:      app
@@ -38,6 +39,7 @@ executable hchain-exe
   default-language:    Haskell2010
   extensions:          OverloadedStrings
                      , TemplateHaskell
+                     , FlexibleInstances
 
 test-suite hchain-test
   type:                exitcode-stdio-1.0

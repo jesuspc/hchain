@@ -17,16 +17,6 @@ class BContent a where
   serial :: a -> String
   mApply :: a -> [a] -> (a -> b) -> Maybe b
 
-instance BContent a => BContent [a] where
-  serial = concatMap serial
-  mApply xs xys cont = undefined
-
--- splitChain :: BlockChain (Block [a1]) -> (a1 -> a) -> BlockChain a
--- splitChain xs cont = splittedChain xs []
---   where
---     splittedChain [] acc = acc
---     splittedChain (x:xs) acc = splittedChain xs (map cont (_content x) ++ acc)
-
 mkInitialChain :: BContent a => a -> BlockChain (Block a)
 mkInitialChain content = [mine (mkInitialBlock content)]
 
@@ -42,9 +32,9 @@ addBlock content chain@(x:xs)
   | null contentBlock = Nothing
   | otherwise = Just $ mine (fromJust contentBlock) : chain
   where
-    contentBlock = mApply content contents cont
+    contentBlock = mApply content (reverse contents) cont
     cont = mkBlock (x ^. num + 1) (x ^. bHash)
-    contents = reverse $ map _content chain
+    contents = map _content chain
 
 mkBlock :: BContent a => BNum -> Hash -> a -> Block a
 mkBlock n prevh content = Block n 1 content prevh ""

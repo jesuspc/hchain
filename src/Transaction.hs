@@ -20,6 +20,10 @@ instance BContent Transaction where
 
   mApply tx txs cont = foldTxs txs >>= applyTransaction tx >> (Just $ cont tx)
 
+instance BContent [Transaction] where
+  serial = concatMap serial
+  mApply xs xys cont = foldTxs (concat xys ++ xs) >> (Just $ cont xs)
+
 initialState :: State
 initialState = Map.empty
 
