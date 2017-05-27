@@ -3,7 +3,6 @@ module Transaction (foldChain, Transaction (..)) where
 import           BlockChain      (BContent (..), Block (..), BlockChain,
                                   content)
 import           Control.Lens
-import           Data.Map.Lens
 import qualified Data.Map.Strict as Map
 import           Data.Maybe      (fromJust)
 
@@ -32,7 +31,7 @@ foldChain chain = foldChain' reversedChain initialState
   where
     reversedChain = reverse chain
     foldChain' xs state = foldl
-        (\ state x -> fromJust (applyTransaction (x ^. content) state)) state xs
+        (\ state' x -> fromJust (applyTransaction (x ^. content) state')) state xs
 
 foldTxs :: [Transaction] -> Maybe State
 foldTxs = foldTxs' (Just initialState)

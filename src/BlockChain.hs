@@ -18,26 +18,26 @@ class BContent a where
   mApply :: a -> [a] -> (a -> b) -> Maybe b
 
 mkInitialChain :: BContent a => a -> BlockChain (Block a)
-mkInitialChain content = [mine (mkInitialBlock content)]
+mkInitialChain c = [mine (mkInitialBlock c)]
 
 mkInitialBlock :: BContent a => a -> Block a
-mkInitialBlock content = Block 1 1 content emptyHash emptyHash
+mkInitialBlock c = Block 1 1 c emptyHash emptyHash
   where emptyHash = "0000000000000000000000000000000000000000000000000000000000000000"
 
 isValidChain :: BContent a => BlockChain (Block a) -> Bool
 isValidChain = all $ checkSignature . view bHash
 
 addBlock :: BContent a => a -> BlockChain (Block a) -> Maybe (BlockChain (Block a))
-addBlock content chain@(x:xs)
+addBlock c chain@(x:xs)
   | null contentBlock = Nothing
   | otherwise = Just $ mine (fromJust contentBlock) : chain
   where
-    contentBlock = mApply content (reverse contents) cont
+    contentBlock = mApply c (reverse contents) cont
     cont = mkBlock (x ^. num + 1) (x ^. bHash)
     contents = map _content chain
 
 mkBlock :: BContent a => BNum -> Hash -> a -> Block a
-mkBlock n prevh content = Block n 1 content prevh ""
+mkBlock n prevh c = Block n 1 c prevh ""
 
 hash :: BContent a => Block a -> Hash
 hash block = showDigest $ sha256 (C8.pack (serialize block))
