@@ -1,4 +1,4 @@
-module BlockChain (BlockChain, Block (..), content, BContent (..), isValidChain, addBlock, mkInitialChain) where
+module Hchain.BlockChain (BlockChain, Hash, Block (..), content, BContent (..), isValidChain, addBlock, mkInitialChain) where
 
 import qualified Data.ByteString.Lazy.Char8 as C8
 import           Control.Lens

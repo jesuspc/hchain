@@ -1,10 +1,10 @@
-module Transaction (foldChain, Transaction (..)) where
+module Hchain.Transaction (foldChain, Transaction (..)) where
 
-import           BlockChain      (BContent (..), Block (..), BlockChain,
-                                  content)
 import           Control.Lens
-import qualified Data.Map.Strict as Map
-import           Data.Maybe      (fromJust)
+import qualified Data.Map.Strict   as Map
+import           Data.Maybe        (fromJust)
+import           Hchain.BlockChain (BContent (..), Block (..), BlockChain,
+                                    content)
 
 type State = Map.Map Actor TokenAmount
 type Actor = String

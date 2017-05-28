@@ -1,7 +1,7 @@
 module Main where
 
-import           BlockChain
-import           Transaction
+import           Hchain.BlockChain
+import           Hchain.Transaction
 
 -- newtype SimpleBContent = SimpleBContent String deriving (Show)
 
