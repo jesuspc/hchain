@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric      #-}
 
-module Hchain.Client where
+module Hchain.Client (start) where
 
 import           Control.Concurrent               (threadDelay)
 import qualified Control.Distributed.Backend.P2P  as P2P
@@ -20,10 +20,9 @@ import           Hchain.BlockChain
 
 type VersionData = Int
 type BlockIdent = Hash
-data ProtocolMsg = VersionMsg VersionData
-                 | VerackMsg VersionData
-                 | VerackAcceptMsg
-                 | GetBlocks (Maybe BlockIdent)
+data ProtocolMsg = GetBlocksMsg (Maybe BlockIdent)
+                 | InvMsg [BlockIdent]
+                 | GetDataMsg BlockIdent
                  deriving (Show, Generic, Typeable)
 instance Binary ProtocolMsg
 
@@ -48,33 +47,40 @@ mainLoop :: BlockChain (Block a) -> Process ()
 mainLoop chain = do
   self <- getSelfPid
 
+  liftIO $ putStrLn ("My pid " ++ show self)
   (sender, msg) <- expect :: Process (ProcessId, ProtocolMsg)
 
   case msg of
-    VersionMsg i -> do
-      liftIO $ putStrLn ("Received version " ++ show i)
-      DP.send sender (self, VerackMsg 1)
-      mainLoop chain
-    VerackMsg i -> do
-      liftIO $ putStrLn ("Verack received for version" ++ show i)
-      DP.send sender (self, VerackAcceptMsg)
-      mainLoop chain
-    VerackAcceptMsg -> do
-      liftIO $ putStrLn "Verack accept"
-      mainLoop chain
-    GetBlocks (Just hash) -> do
-      liftIO $ putStrLn "Getblocks with initial received"
-      mainLoop chain
-    GetBlocks Nothing -> do
-      liftIO $ putStrLn "Getblocks for the first time received"
-      mainLoop chain
+    GetBlocksMsg hash -> onGetBlocks self sender hash chain
+    InvMsg hashes     -> onInv self sender hashes chain
 
 connectToNetwork :: BlockChain (Block a) -> ProcessId -> Process (BlockChain (Block a))
 connectToNetwork chain pid = do
   liftIO $ putStrLn "Sending connection request"
-  P2P.nsendCapable "mainLoop" (pid, GetBlocks (lastBlockHash chain))
-  P2P.nsendCapable "mainLoop" (pid, VersionMsg 1)
+  P2P.nsendCapable "mainLoop" (pid, GetBlocksMsg (lastBlockHash chain))
   return chain
   where
     lastBlockHash []     = Nothing
     lastBlockHash (x:xs) = Just $ _bHash x
+
+onGetBlocks :: ProcessId -> ProcessId -> Maybe BlockIdent -> BlockChain (Block a) -> Process ()
+onGetBlocks self sender msg chain = case msg of
+  (Just hash) -> do
+    liftIO $ putStrLn "Getblocks with initial received"
+    let hashes = hashesFrom hash
+    liftIO $ putStrLn ("Going to send hashes " ++ show hashes)
+    DP.send sender (self, InvMsg hashes)
+    mainLoop chain
+  Nothing -> do
+    liftIO $ putStrLn "Getblocks for the first time received"
+    DP.send sender (self, InvMsg initialHashes)
+    mainLoop chain
+  where
+    hashesFrom hash = firstHashes 500 . takeWhile (\block -> _bHash block /= hash) $ chain
+    initialHashes = firstHashes 500 . reverse $ chain
+    firstHashes n = map _bHash . take n
+
+onInv :: ProcessId -> ProcessId -> [BlockIdent] -> BlockChain (Block a) -> Process ()
+onInv self sender hashes chain = do
+  liftIO $ putStrLn $ "Received InvMsg with hashes " ++ show hashes
+  mainLoop chain
