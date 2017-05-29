@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric      #-}
 
-module Hchain.BlockChain (BlockChain, Hash, Block (..), content, BContent (..), isValidChain, addBlock, mkInitialChain) where
+module Hchain.BlockChain (BlockChain, Hash, Block (..), content, BContent (..), isValidChain, addBlock, mkInitialChain, addValidBlock, mineBlock) where
 
 import qualified Data.ByteString.Lazy.Char8 as C8
 import           Control.Lens
@@ -33,10 +33,18 @@ mkInitialBlock c = Block 1 1 c emptyHash emptyHash
 isValidChain :: BContent a => BlockChain (Block a) -> Bool
 isValidChain = all $ checkSignature . view bHash
 
-addBlock :: BContent a => a -> BlockChain (Block a) -> Maybe (BlockChain (Block a))
-addBlock c chain@(x:xs)
+mineBlock :: BContent a => a -> BlockChain (Block a) -> Maybe (BlockChain (Block a))
+mineBlock = addBlock mine
+
+addValidBlock :: BContent a => Block a -> BlockChain (Block a) -> Maybe (BlockChain (Block a))
+addValidBlock block chain
+  | checkSignature (block ^. bHash) && not (null (addBlock id (block ^. content) chain)) = Just $ block : chain
+  | otherwise = Nothing
+
+addBlock :: BContent a => (Block a -> Block a) -> a -> BlockChain (Block a) -> Maybe (BlockChain (Block a))
+addBlock op c chain@(x:xs)
   | null contentBlock = Nothing
-  | otherwise = Just $ mine (fromJust contentBlock) : chain
+  | otherwise = Just $ op (fromJust contentBlock) : chain
   where
     contentBlock = mApply c (reverse contents) cont
     cont = mkBlock (x ^. num + 1) (x ^. bHash)
