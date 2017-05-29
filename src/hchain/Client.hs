@@ -17,6 +17,10 @@ import           GHC.Generics
 import           Network.Socket
 
 import           Hchain.BlockChain
+import           Hchain.Transaction
+
+import           Data.List                        (find)
+import           Data.Maybe                       (fromJust)
 
 type VersionData = Int
 type BlockIdent = Hash
@@ -24,26 +28,31 @@ data ProtocolMsg = GetBlocksMsg (Maybe BlockIdent)
                  | InvMsg [BlockIdent]
                  | GetDataMsg BlockIdent
                  deriving (Show, Generic, Typeable)
-instance Binary ProtocolMsg
 
-start :: HostName -> ServiceName -> [String] -> BlockChain (Block a) -> IO ()
+instance Binary ProtocolMsg
+instance Binary Transaction
+instance (Typeable a, Binary a) => Binary (Block a)
+
+start :: (Show a, Typeable a, Binary a) => HostName -> ServiceName -> [String] -> BlockChain (Block a) -> IO ()
 start host port seeds chain = P2P.bootstrap host port (map P2P.makeNodeId seeds) initRemoteTable (mainProcess chain)
 
-mainProcess :: BlockChain (Block a) -> Process ()
+mainProcess :: (Show a, Typeable a, Binary a) => BlockChain (Block a) -> Process ()
 mainProcess chain = do
   node <- spawnLocal (initLoop chain)
   return ()
 
-initLoop :: BlockChain (Block a) -> Process ()
+initLoop :: (Show a, Typeable a, Binary a) => BlockChain (Block a) -> Process ()
 initLoop chain = do
   liftIO $ threadDelay 1000000
+
+  liftIO $ putStrLn $ "My chain looks like " ++ show chain
 
   newChain <- getSelfPid >>= connectToNetwork chain
   getSelfPid >>= register "mainLoop"
 
   mainLoop newChain
 
-mainLoop :: BlockChain (Block a) -> Process ()
+mainLoop :: (Show a, Typeable a, Binary a) => BlockChain (Block a) -> Process ()
 mainLoop chain = do
   self <- getSelfPid
 
@@ -53,8 +62,9 @@ mainLoop chain = do
   case msg of
     GetBlocksMsg hash -> onGetBlocks self sender hash chain
     InvMsg hashes     -> onInv self sender hashes chain
+    GetDataMsg hash   -> onGetData self sender hash chain
 
-connectToNetwork :: BlockChain (Block a) -> ProcessId -> Process (BlockChain (Block a))
+connectToNetwork :: (Show a, Typeable a, Binary a) => BlockChain (Block a) -> ProcessId -> Process (BlockChain (Block a))
 connectToNetwork chain pid = do
   liftIO $ putStrLn "Sending connection request"
   P2P.nsendCapable "mainLoop" (pid, GetBlocksMsg (lastBlockHash chain))
@@ -63,7 +73,7 @@ connectToNetwork chain pid = do
     lastBlockHash []     = Nothing
     lastBlockHash (x:xs) = Just $ _bHash x
 
-onGetBlocks :: ProcessId -> ProcessId -> Maybe BlockIdent -> BlockChain (Block a) -> Process ()
+onGetBlocks :: (Show a, Typeable a, Binary a) => ProcessId -> ProcessId -> Maybe BlockIdent -> BlockChain (Block a) -> Process ()
 onGetBlocks self sender msg chain = case msg of
   (Just hash) -> do
     liftIO $ putStrLn "Getblocks with initial received"
@@ -77,10 +87,34 @@ onGetBlocks self sender msg chain = case msg of
     mainLoop chain
   where
     hashesFrom hash = firstHashes 500 . takeWhile (\block -> _bHash block /= hash) $ chain
-    initialHashes = firstHashes 500 . reverse $ chain
-    firstHashes n = map _bHash . take n
+    initialHashes = firstHashes 500 chain
+    firstHashes n = map _bHash . take n . reverse
 
-onInv :: ProcessId -> ProcessId -> [BlockIdent] -> BlockChain (Block a) -> Process ()
+onInv :: (Show a, Typeable a, Binary a) => ProcessId -> ProcessId -> [BlockIdent] -> BlockChain (Block a) -> Process ()
 onInv self sender hashes chain = do
   liftIO $ putStrLn $ "Received InvMsg with hashes " ++ show hashes
+  let getBlocks = map (getBlock sender) hashes
+  newChain <- foldl addToChain (return chain) getBlocks
+  liftIO $ putStrLn $ "New chain looks like " ++ show newChain
+  mainLoop newChain
+  where
+    addToChain :: (Show a, Typeable a, Binary a) => Process (BlockChain (Block a)) -> Process (Block a) -> Process (BlockChain (Block a))
+    addToChain chain blockGetter = do
+      block <- blockGetter
+      c <- chain
+      return (block : c)
+
+getBlock :: (Show a, Typeable a, Binary a) => ProcessId -> BlockIdent -> Process (Block a)
+getBlock sender hash = do
+  self <- getSelfPid
+  DP.send sender (self, GetDataMsg hash)
+  (sender, block) <- expect :: (Typeable a, Binary a) => Process (ProcessId, Block a)
+  return block
+
+onGetData :: (Show a, Typeable a, Binary a) => ProcessId -> ProcessId -> BlockIdent -> BlockChain (Block a) -> Process ()
+onGetData self sender hash chain = do
+  liftIO $ putStrLn $ "Received GetData with hash " ++ show hash
+  DP.send sender (self, blockForHash hash chain)
   mainLoop chain
+  where
+    blockForHash h = fromJust . find ((== h) . _bHash)

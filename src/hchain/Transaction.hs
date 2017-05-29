@@ -1,3 +1,6 @@
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric      #-}
+
 module Hchain.Transaction (foldChain, Transaction (..)) where
 
 import           Control.Lens
@@ -6,12 +9,17 @@ import           Data.Maybe        (fromJust)
 import           Hchain.BlockChain (BContent (..), Block (..), BlockChain,
                                     content)
 
+import           Data.Typeable
+import           GHC.Generics
+
 type State = Map.Map Actor TokenAmount
 type Actor = String
 type Recipient = Actor
 type Sender = Actor
 type TokenAmount = Int
-data Transaction = Coinbase TokenAmount Recipient | Transaction TokenAmount Sender Recipient deriving (Show)
+data Transaction = Coinbase TokenAmount Recipient
+                 | Transaction TokenAmount Sender Recipient
+                 deriving (Show, Generic, Typeable)
 
 instance BContent Transaction where
   serial (Coinbase n r)      = "Coinbase " ++ show n ++ show r

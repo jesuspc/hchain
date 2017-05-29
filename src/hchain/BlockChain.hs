@@ -1,3 +1,6 @@
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric      #-}
+
 module Hchain.BlockChain (BlockChain, Hash, Block (..), content, BContent (..), isValidChain, addBlock, mkInitialChain) where
 
 import qualified Data.ByteString.Lazy.Char8 as C8
@@ -6,10 +9,13 @@ import           Data.Digest.Pure.SHA       (sha256, showDigest)
 import           Data.String.Utils          (startswith)
 import Data.Maybe (fromJust)
 
+import           Data.Typeable
+import           GHC.Generics
+
 type Hash = String
 type BNum = Int
 type BNonce = Int
-data Block a = Block { _num :: BNum, _nonce :: BNonce, _content :: a, _prevH :: Hash, _bHash :: Hash } deriving (Show)
+data Block a = Block { _num :: BNum, _nonce :: BNonce, _content :: a, _prevH :: Hash, _bHash :: Hash } deriving (Show, Generic, Typeable)
 $(makeLenses ''Block)
 type BlockChain a = [a]
 
