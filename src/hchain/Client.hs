@@ -93,11 +93,13 @@ onGetBlocks self sender msg chain = case msg of
 onInv :: (Show a, Typeable a, Binary a) => ProcessId -> ProcessId -> [BlockIdent] -> BlockChain (Block a) -> Process ()
 onInv self sender hashes chain = do
   liftIO $ putStrLn $ "Received InvMsg with hashes " ++ show hashes
-  let getBlocks = map (getBlock sender) hashes
+  let getBlocks = map (getBlock sender) hashes'
   newChain <- foldl addToChain (return chain) getBlocks
   liftIO $ putStrLn $ "New chain looks like " ++ show newChain
   mainLoop newChain
   where
+    hashes' = filter (`notElem` blockhashes) hashes
+    blockhashes = map _bHash chain
     addToChain :: (Show a, Typeable a, Binary a) => Process (BlockChain (Block a)) -> Process (Block a) -> Process (BlockChain (Block a))
     addToChain chain blockGetter = do
       block <- blockGetter
