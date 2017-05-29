@@ -17,6 +17,8 @@ import           GHC.Generics
 import           Network.Socket
 
 import           Hchain.BlockChain
+import           Hchain.CommandLineTool
+import           Hchain.Miner
 import           Hchain.Transaction
 
 import           Data.List                        (find)
@@ -25,6 +27,7 @@ import           Data.Maybe                       (fromJust)
 type VersionData = Int
 type BlockIdent = Hash
 data ProtocolMsg = GetBlocksMsg (Maybe BlockIdent)
+                 -- Can contain Blocks or Txs
                  | InvMsg [BlockIdent]
                  | GetDataMsg BlockIdent
                  deriving (Show, Generic, Typeable)
@@ -38,7 +41,8 @@ start host port seeds chain = P2P.bootstrap host port (map P2P.makeNodeId seeds)
 
 mainProcess :: (Show a, Typeable a, Binary a, BContent a) => BlockChain (Block a) -> Process ()
 mainProcess chain = do
-  node <- spawnLocal (initLoop chain)
+  loopPid <- spawnLocal $ initLoop chain
+  spawnLocal $ initCommandLine loopPid
   return ()
 
 initLoop :: (Show a, Typeable a, Binary a, BContent a) => BlockChain (Block a) -> Process ()
@@ -56,7 +60,6 @@ mainLoop :: (Show a, Typeable a, Binary a, BContent a) => BlockChain (Block a) -
 mainLoop chain = do
   self <- getSelfPid
 
-  liftIO $ putStrLn ("My pid " ++ show self)
   (sender, msg) <- expect :: Process (ProcessId, ProtocolMsg)
 
   case msg of
@@ -95,6 +98,7 @@ onInv self sender hashes chain = do
   liftIO $ putStrLn $ "Received InvMsg with hashes " ++ show hashes
   let getBlocks = map (getBlock sender) hashes'
   newChain <- foldl addToChain (return chain) getBlocks
+  -- Start miner if over threshold and miner stopped
   liftIO $ putStrLn $ "New chain looks like " ++ show newChain
   mainLoop newChain
   where
@@ -106,7 +110,11 @@ onInv self sender hashes chain = do
       c <- chain'
       let newChain = addValidBlock block c
       case newChain of
-        Just nchain -> return nchain
+        Just nchain -> do
+          -- Remove the txs that were present in block
+          -- Kill miner if miner and any tx being processed removed
+          P2P.nsendCapable "mainLoop" (self, InvMsg [_bHash block])
+          return nchain
         Nothing     -> return c
 
 getBlock :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> BlockIdent -> Process (Block a)
