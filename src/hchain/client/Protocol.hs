@@ -23,3 +23,6 @@ invType = fst
 
 invHash :: InvItem -> Hash
 invHash = snd
+
+mkInvItem :: InvType -> Hash -> InvItem
+mkInvItem t h = (t, h)

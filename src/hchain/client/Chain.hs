@@ -1,11 +1,8 @@
-module Hchain.Client.Chain (start) where
+module Hchain.Client.Chain (spawnProcess) where
 
-import           Control.Concurrent               (threadDelay)
-import qualified Control.Distributed.Backend.P2P  as P2P
-import           Control.Distributed.Process      as DP
-import           Control.Distributed.Process.Node as DPN
-
-import           Network.Socket
+import           Control.Concurrent              (threadDelay)
+import qualified Control.Distributed.Backend.P2P as P2P
+import           Control.Distributed.Process     as DP
 
 import           Data.Binary
 import           Data.Typeable
@@ -13,8 +10,8 @@ import           GHC.Generics
 
 import           Hchain.BlockChain
 
-import           Data.List                        (find)
-import           Data.Maybe                       (fromJust)
+import           Data.List                       (find)
+import           Data.Maybe                      (fromJust)
 
 import           Hchain.Client.Protocol
 
@@ -24,16 +21,8 @@ processTypeId = "chain"
 tBlock :: String
 tBlock = "block"
 
-start :: (Show a, Typeable a, Binary a, BContent a) => HostName -> ServiceName -> [String] -> BlockChain (Block a) -> IO ()
-start host port seeds chain = P2P.bootstrap host port (map P2P.makeNodeId seeds) initRemoteTable (mainProcess chain)
-
-mainProcess :: (Show a, Typeable a, Binary a, BContent a) => BlockChain (Block a) -> Process ()
-mainProcess chain = do
-  _loopPid <- spawnLocal $ initLoop chain
-  return ()
-
-initLoop :: (Show a, Typeable a, Binary a, BContent a) => BlockChain (Block a) -> Process ()
-initLoop chain = do
+spawnProcess :: (Show a, Typeable a, Binary a, BContent a) => BlockChain (Block a) -> Process ()
+spawnProcess chain = do
   liftIO $ threadDelay 1000000
 
   liftIO $ putStrLn $ "My chain looks like " ++ show chain
@@ -65,11 +54,14 @@ mainLoop chain = do
 
 onGetBlocks :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> ProcessId -> Maybe InvItem -> BlockChain (Block a) -> Process ()
 onGetBlocks self sender msg chain = case msg of
-  (Just (tBlock, hash)) -> do
+  (Just ("block", hash)) -> do
     liftIO $ putStrLn "Getblocks with initial received"
     let hashes = hashesFrom hash
     liftIO $ putStrLn ("Going to send hashes " ++ show hashes)
     DP.send sender (self, InvMsg (map bInvItem hashes))
+    mainLoop chain
+  (Just (t, hash)) -> do
+    liftIO $ putStrLn $ "Getblocks with " ++ show t ++ "received: Ignoring"
     mainLoop chain
   Nothing -> do
     liftIO $ putStrLn "Getblocks for the first time received"
@@ -117,4 +109,4 @@ onGetData self sender hash chain = do
     blockForHash h = fromJust . find ((== h) . _bHash)
 
 bInvItem :: Hash -> InvItem
-bInvItem h = (tBlock, h)
+bInvItem = mkInvItem tBlock
