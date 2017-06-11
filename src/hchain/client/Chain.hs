@@ -64,6 +64,19 @@ onGetBlocks sender msg chain = case msg of
     sendBlockRange sender Nothing chain
     mainLoop chain
 
+onInv :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> [InvItem] -> BlockChain (Block a) -> Process ()
+onInv sender hashes chain = do
+  liftIO $ putStrLn $ "Received InvMsg with hashes " ++ show hashes
+  newChain <- addMissingBlocks sender hashes chain
+  liftIO $ putStrLn $ "New chain looks like " ++ show newChain
+  mainLoop newChain
+
+onGetData :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> InvItem -> BlockChain (Block a) -> Process ()
+onGetData sender hash chain = do
+  liftIO $ putStrLn $ "Received GetData with hash " ++ show hash
+  sendBlockData sender hash chain
+  mainLoop chain
+
 sendBlockRange :: ProcessId -> Maybe Hash -> BlockChain (Block a) -> Process ()
 sendBlockRange pid mh chain =
   let firstHashes n = map _bHash . take n . reverse
@@ -75,13 +88,6 @@ sendBlockRange pid mh chain =
     self <- getSelfPid
     liftIO $ putStrLn ("Going to send hashes " ++ show hashes)
     DP.send pid (self, InvMsg (map bInvItem hashes))
-
-onInv :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> [InvItem] -> BlockChain (Block a) -> Process ()
-onInv sender hashes chain = do
-  liftIO $ putStrLn $ "Received InvMsg with hashes " ++ show hashes
-  newChain <- addMissingBlocks sender hashes chain
-  liftIO $ putStrLn $ "New chain looks like " ++ show newChain
-  mainLoop newChain
 
 addMissingBlocks :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> [InvItem] -> BlockChain (Block a) -> Process (BlockChain (Block a))
 addMissingBlocks pid invs chain =
@@ -108,12 +114,6 @@ getBlock sender inv = do
   DP.send sender (self, GetDataMsg inv)
   (_sender, block) <- expect :: (Typeable a, Binary a, BContent a) => Process (ProcessId, Block a)
   return block
-
-onGetData :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> InvItem -> BlockChain (Block a) -> Process ()
-onGetData sender hash chain = do
-  liftIO $ putStrLn $ "Received GetData with hash " ++ show hash
-  sendBlockData sender hash chain
-  mainLoop chain
 
 sendBlockData :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> InvItem -> BlockChain (Block a) -> Process ()
 sendBlockData pid h chain =
