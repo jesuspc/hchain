@@ -43,17 +43,15 @@ connectToNetwork chain pid = do
 
 mainLoop :: (Show a, Typeable a, Binary a, BContent a) => BlockChain (Block a) -> Process ()
 mainLoop chain = do
-  self <- getSelfPid
-
   (sender, msg) <- expect :: Process (ProcessId, ProtocolMsg)
 
   case msg of
-    GetBlocksMsg hash -> onGetBlocks self sender hash chain
-    InvMsg hashes     -> onInv self sender hashes chain
-    GetDataMsg hash   -> onGetData self sender hash chain
+    GetBlocksMsg hash -> onGetBlocks sender hash chain
+    InvMsg hashes     -> onInv sender hashes chain
+    GetDataMsg hash   -> onGetData sender hash chain
 
-onGetBlocks :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> ProcessId -> Maybe InvItem -> BlockChain (Block a) -> Process ()
-onGetBlocks self sender msg chain = case msg of
+onGetBlocks :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> Maybe InvItem -> BlockChain (Block a) -> Process ()
+onGetBlocks sender msg chain = case msg of
   (Just ("block", hash)) -> do
     liftIO $ putStrLn "Getblocks with initial received"
     sendBlockRange sender (Just hash) chain
@@ -78,41 +76,51 @@ sendBlockRange pid mh chain =
     liftIO $ putStrLn ("Going to send hashes " ++ show hashes)
     DP.send pid (self, InvMsg (map bInvItem hashes))
 
-onInv :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> ProcessId -> [InvItem] -> BlockChain (Block a) -> Process ()
-onInv self sender hashes chain = do
+onInv :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> [InvItem] -> BlockChain (Block a) -> Process ()
+onInv sender hashes chain = do
   liftIO $ putStrLn $ "Received InvMsg with hashes " ++ show hashes
-  let getBlocks = map (getBlock sender . bInvItem) hashes'
-  newChain <- foldl addToChain (return chain) getBlocks
+  newChain <- addMissingBlocks sender hashes chain
   liftIO $ putStrLn $ "New chain looks like " ++ show newChain
   mainLoop newChain
-  where
-    hashes' = filter (`notElem` blockhashes) (map snd hashes)
-    blockhashes = map _bHash chain
-    addToChain :: (Show a, Typeable a, Binary a, BContent a) => Process (BlockChain (Block a)) -> Process (Block a) -> Process (BlockChain (Block a))
-    addToChain chain' blockGetter = do
-      block <- blockGetter
-      c <- chain'
-      let newChain = addValidBlock block c
-      case newChain of
-        Just nchain -> do
-          P2P.nsendCapable processTypeId (self, InvMsg [bInvItem $ _bHash block])
-          return nchain
-        Nothing     -> return c
+
+addMissingBlocks :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> [InvItem] -> BlockChain (Block a) -> Process (BlockChain (Block a))
+addMissingBlocks pid invs chain =
+  let
+    invs' = map bInvItem $ filter (`notElem` map _bHash chain) (map invHash invs)
+    getBlocks = map (getBlock pid) invs'
+  in foldl addToChain (return chain) getBlocks
+
+addToChain :: (Show a, Typeable a, Binary a, BContent a) => Process (BlockChain (Block a)) -> Process (Block a) -> Process (BlockChain (Block a))
+addToChain chain blockGetter = do
+  self <- getSelfPid
+  block <- blockGetter
+  c <- chain
+  let newChain = addValidBlock block c
+  case newChain of
+    Just nchain -> do
+      P2P.nsendCapable processTypeId (self, InvMsg [bInvItem $ _bHash block])
+      return nchain
+    Nothing     -> return c
 
 getBlock :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> InvItem -> Process (Block a)
-getBlock sender hash = do
+getBlock sender inv = do
   self <- getSelfPid
-  DP.send sender (self, GetDataMsg hash)
+  DP.send sender (self, GetDataMsg inv)
   (_sender, block) <- expect :: (Typeable a, Binary a, BContent a) => Process (ProcessId, Block a)
   return block
 
-onGetData :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> ProcessId -> InvItem -> BlockChain (Block a) -> Process ()
-onGetData self sender hash chain = do
+onGetData :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> InvItem -> BlockChain (Block a) -> Process ()
+onGetData sender hash chain = do
   liftIO $ putStrLn $ "Received GetData with hash " ++ show hash
-  DP.send sender (self, blockForHash (snd hash) chain)
+  sendBlockData sender hash chain
   mainLoop chain
-  where
-    blockForHash h = fromJust . find ((== h) . _bHash)
+
+sendBlockData :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> InvItem -> BlockChain (Block a) -> Process ()
+sendBlockData pid h chain =
+  let blockForHash h = fromJust . find ((== h) . _bHash)
+  in do
+    self <- getSelfPid
+    DP.send pid (self, blockForHash (invHash h) chain)
 
 bInvItem :: Hash -> InvItem
 bInvItem = mkInvItem tBlock
