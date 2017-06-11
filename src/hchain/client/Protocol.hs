@@ -9,13 +9,16 @@ import           GHC.Generics
 
 import           Hchain.BlockChain (Hash)
 
-type InvType = String
+type TxIden = String
+data InvType = InvBlock | InvTx deriving (Show, Generic, Typeable, Eq)
 type InvItem = (InvType, Hash)
 data ProtocolMsg = GetBlocksMsg (Maybe InvItem)
                  | InvMsg [InvItem]
                  | GetDataMsg InvItem
                  deriving (Show, Generic, Typeable)
+type STx a = (TxIden, a)
 
+instance Binary InvType
 instance Binary ProtocolMsg
 
 invType :: InvItem -> InvType
