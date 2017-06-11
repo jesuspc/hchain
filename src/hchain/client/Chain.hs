@@ -56,21 +56,27 @@ onGetBlocks :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> Proces
 onGetBlocks self sender msg chain = case msg of
   (Just ("block", hash)) -> do
     liftIO $ putStrLn "Getblocks with initial received"
-    let hashes = hashesFrom hash
-    liftIO $ putStrLn ("Going to send hashes " ++ show hashes)
-    DP.send sender (self, InvMsg (map bInvItem hashes))
+    sendBlockRange sender (Just hash) chain
     mainLoop chain
   (Just (t, hash)) -> do
     liftIO $ putStrLn $ "Getblocks with " ++ show t ++ "received: Ignoring"
     mainLoop chain
   Nothing -> do
     liftIO $ putStrLn "Getblocks for the first time received"
-    DP.send sender (self, InvMsg (map bInvItem initialHashes))
+    sendBlockRange sender Nothing chain
     mainLoop chain
-  where
-    hashesFrom hash = firstHashes 500 . takeWhile (\block -> _bHash block /= hash) $ chain
-    initialHashes = firstHashes 500 chain
-    firstHashes n = map _bHash . take n . reverse
+
+sendBlockRange :: ProcessId -> Maybe Hash -> BlockChain (Block a) -> Process ()
+sendBlockRange pid mh chain =
+  let firstHashes n = map _bHash . take n . reverse
+      selector = case mh of
+                   Just h  -> takeWhile (\block -> _bHash block /= h)
+                   Nothing -> id
+      hashes = firstHashes 500 . selector $ chain
+  in do
+    self <- getSelfPid
+    liftIO $ putStrLn ("Going to send hashes " ++ show hashes)
+    DP.send pid (self, InvMsg (map bInvItem hashes))
 
 onInv :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> ProcessId -> [InvItem] -> BlockChain (Block a) -> Process ()
 onInv self sender hashes chain = do

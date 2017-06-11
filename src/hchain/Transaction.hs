@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric      #-}
 
-module Hchain.Transaction (foldChain, Transaction (..)) where
+module Hchain.Transaction (foldChain, Transaction (..), applyTransaction) where
 
 import           Control.Lens
 import qualified Data.Map.Strict   as Map
