@@ -9,6 +9,7 @@ import           Data.Maybe        (fromJust)
 import           Hchain.BlockChain (BContent (..), Block (..), BlockChain,
                                     content)
 
+import           Data.Binary
 import           Data.Typeable
 import           GHC.Generics
 
@@ -30,6 +31,8 @@ instance BContent Transaction where
 instance BContent [Transaction] where
   serial = concatMap serial
   mApply xs xys cont = foldTxs (concat xys ++ xs) >> (Just $ cont xs)
+
+instance Binary Transaction
 
 initialState :: State
 initialState = Map.empty

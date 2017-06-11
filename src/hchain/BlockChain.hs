@@ -9,6 +9,7 @@ import           Data.Digest.Pure.SHA       (sha256, showDigest)
 import           Data.String.Utils          (startswith)
 import Data.Maybe (fromJust)
 
+import           Data.Binary
 import           Data.Typeable
 import           GHC.Generics
 
@@ -22,6 +23,8 @@ type BlockChain a = [a]
 class BContent a where
   serial :: a -> String
   mApply :: a -> [a] -> (a -> b) -> Maybe b
+
+instance (Typeable a, Binary a) => Binary (Block a)
 
 mkInitialChain :: BContent a => a -> BlockChain (Block a)
 mkInitialChain c = [mine (mkInitialBlock c)]
