@@ -6,8 +6,8 @@ A simple blockchain
 
 ## TODO
 
-[X] Blockchain datatype
-[X] Ability to store transactions in the blockchain
-[X] Distribution of the blockchain
-[] A miner client
-[] Command line tools
+- [X] Blockchain datatype
+- [X] Ability to store transactions in the blockchain
+- [X] Distribution of the blockchain
+- [] A miner client
+- [] Command line tools
