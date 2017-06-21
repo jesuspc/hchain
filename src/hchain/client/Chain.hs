@@ -6,20 +6,15 @@ import           Control.Distributed.Process     as DP
 
 import           Data.Binary
 import           Data.Typeable
-import           GHC.Generics
 
 import           Hchain.BlockChain
 
 import           Data.List                       (find)
-import           Data.Maybe                      (fromJust)
 
 import           Hchain.Client.Protocol
 
 processTypeId :: String
 processTypeId = "chain"
-
-tBlock :: String
-tBlock = "block"
 
 spawnProcess :: (Show a, Typeable a, Binary a, BContent a) => BlockChain (Block a) -> Process ()
 spawnProcess chain = do
@@ -56,7 +51,7 @@ onGetBlocks sender msg chain txs = case msg of
     liftIO $ putStrLn "Getblocks with initial received"
     sendBlockRange sender (Just hash) chain
     mainLoop chain txs
-  (Just (InvTx, hash)) -> do
+  (Just (InvTx, _)) -> do
     liftIO $ putStrLn "Getblocks with TX received, ignoring..."
     mainLoop chain txs
   Nothing -> do
@@ -68,7 +63,7 @@ onInv :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> [InvItem] ->
 onInv sender hashes chain txs = do
   liftIO $ putStrLn $ "Received InvMsg with hashes " ++ show hashes
   newChain <- addMissingBlocks sender blockHashes chain
-  newTxs <- addMissingTxs sender txHashes chain txs
+  _newTxs <- addMissingTxs sender txHashes chain txs
   liftIO $ putStrLn $ "New chain looks like " ++ show newChain
   mainLoop newChain txs
   where
@@ -114,7 +109,7 @@ addToTxs chain txs txGetter = do
   c <- chain
   txs' <- txs
   case foldl addBlock' (Just c) (map snd txs') of
-    Just chain' -> case mtx of
+    Just _chain' -> case mtx of
       Just tx -> do
         P2P.nsendCapable processTypeId (self, InvMsg [tInvItem $ fst tx])
         return $ txs' ++ [tx]

@@ -6,7 +6,6 @@ import           Control.Distributed.Process.Node   as DPN
 
 import           Data.Binary
 import           Data.Typeable
-import           GHC.Generics
 
 import           Network.Socket
 
