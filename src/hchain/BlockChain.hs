@@ -45,7 +45,7 @@ addValidBlock block chain
   | otherwise = Nothing
 
 addBlock :: BContent a => (Block a -> Block a) -> a -> BlockChain (Block a) -> Maybe (BlockChain (Block a))
-addBlock op c chain@(x:xs)
+addBlock op c chain@(x:_xs)
   | null contentBlock = Nothing
   | otherwise = Just $ op (fromJust contentBlock) : chain
   where

@@ -132,6 +132,7 @@ addToChain chain blockGetter = do
   case mblock of
     Just block -> case addValidBlock block c of
                     Just nchain -> do
+                      -- Cancel mining if needed, remove txs that were present in the block
                       P2P.nsendCapable processTypeId (self, InvMsg [bInvItem $ _bHash block])
                       return nchain
                     Nothing     -> return c
