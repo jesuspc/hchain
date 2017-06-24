@@ -16,7 +16,7 @@ import           GHC.Generics
 type Hash = String
 type BNum = Int
 type BNonce = Int
-data Block a = Block { _num :: BNum, _nonce :: BNonce, _content :: a, _prevH :: Hash, _bHash :: Hash } deriving (Show, Generic, Typeable)
+data Block a = Block { _num :: BNum, _nonce :: BNonce, _content :: a, _prevH :: Hash, _bHash :: Hash } deriving (Show, Generic, Typeable, Eq)
 $(makeLenses ''Block)
 type BlockChain a = [a]
 

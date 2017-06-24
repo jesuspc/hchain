@@ -13,11 +13,12 @@ import           Hchain.BlockChain
 import           Hchain.Client.Chain                as Chain
 import           Hchain.Client.CommandLineInterface as CommandLine
 
-start :: (Show a, Typeable a, Binary a, BContent a) => HostName -> ServiceName -> [String] -> BlockChain (Block a) -> IO ()
-start host port seeds chain = P2P.bootstrap host port (map P2P.makeNodeId seeds) initRemoteTable (mainProcess chain)
+import           Control.Concurrent.MVar
 
-mainProcess :: (Show a, Typeable a, Binary a, BContent a) => BlockChain (Block a) -> Process ()
-mainProcess chain = do
-  loopPid <- spawnLocal $ Chain.spawnProcess chain
-  _commandLinePid <- spawnLocal $ CommandLine.spawnProcess loopPid
-  return ()
+start :: (Show a, Typeable a, Binary a, BContent a) => HostName -> ServiceName -> [String] -> BlockChain (Block a) -> MVar (BlockChain (Block a)) -> IO ()
+start host port seeds chain storage = P2P.bootstrap host port (map P2P.makeNodeId seeds) initRemoteTable mainProcess
+  where
+    mainProcess = do
+      loopPid <- spawnLocal $ Chain.spawnProcess chain storage
+      -- _commandLinePid <- spawnLocal $ CommandLine.spawnProcess loopPid
+      return ()

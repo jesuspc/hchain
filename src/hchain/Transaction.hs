@@ -20,7 +20,7 @@ type Sender = Actor
 type TokenAmount = Int
 data Transaction = Coinbase TokenAmount Recipient
                  | Transaction TokenAmount Sender Recipient
-                 deriving (Show, Generic, Typeable)
+                 deriving (Show, Generic, Typeable, Eq)
 
 instance BContent Transaction where
   serial (Coinbase n r)      = "Coinbase " ++ show n ++ show r
