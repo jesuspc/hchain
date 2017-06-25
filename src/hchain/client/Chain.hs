@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Hchain.Client.Chain (spawnProcess) where
 
 import           Control.Concurrent              (threadDelay)
@@ -13,75 +15,76 @@ import           Hchain.Client.Protocol
 import           Data.List                       (find)
 
 import           Control.Concurrent.MVar
+import           Control.Monad.Logger
+import           Control.Monad.Trans
+import qualified Data.Text as T
 
 processTypeId :: String
 processTypeId = "chain"
 
-spawnProcess :: (Show a, Typeable a, Binary a, BContent a) => BlockChain (Block a) -> MVar (BlockChain (Block a)) -> Process ()
+spawnProcess :: (Show a, Typeable a, Binary a, BContent a) => BlockChain (Block a) -> MVar (BlockChain (Block a)) -> LoggingT Process ()
 spawnProcess chain storage = do
   liftIO $ threadDelay 1000000
 
-  liftIO $ putStrLn $ "My chain looks like " ++ show chain
+  $(logInfo) $ "My chain looks like " `T.append` (T.pack . show) chain
 
-  newChain <- getSelfPid >>= connectToNetwork chain
-  getSelfPid >>= register processTypeId
+  newChain <- lift getSelfPid >>= connectToNetwork chain
+  lift getSelfPid >>= \pid-> return (register processTypeId pid)
 
   _ <- liftIO $ putMVar storage chain
 
   mainLoop newChain [] storage
 
-connectToNetwork :: (Show a, Typeable a, Binary a, BContent a) => BlockChain (Block a) -> ProcessId -> Process (BlockChain (Block a))
+connectToNetwork :: (Show a, Typeable a, Binary a, BContent a) => BlockChain (Block a) -> ProcessId -> LoggingT Process (BlockChain (Block a))
 connectToNetwork chain pid = do
-  liftIO $ putStrLn "Sending connection request"
-  P2P.nsendCapable processTypeId (pid, GetBlocksMsg (lastBlockHash chain))
+  $(logInfo) "Sending connection request"
+  lift $ P2P.nsendCapable processTypeId (pid, GetBlocksMsg (lastBlockHash chain))
   return chain
   where
     lastBlockHash []      = Nothing
     lastBlockHash (x:_xs) = Just $ bInvItem $ _bHash x
 
-mainLoop :: (Show a, Typeable a, Binary a, BContent a) => BlockChain (Block a) -> [STx a] -> MVar (BlockChain (Block a)) -> Process ()
+mainLoop :: (Show a, Typeable a, Binary a, BContent a) => BlockChain (Block a) -> [STx a] -> MVar (BlockChain (Block a)) -> LoggingT Process ()
 mainLoop chain txs storage = do
-  liftIO $ putStrLn "START Putting Mvar"
   _ <- liftIO $ swapMVar storage chain
-  liftIO $ putStrLn "FIN putting Mvar"
-  (sender, msg) <- expect :: Process (ProcessId, ProtocolMsg)
+  (sender, msg) <- lift expect :: LoggingT Process (ProcessId, ProtocolMsg)
 
   case msg of
     GetBlocksMsg hash -> onGetBlocks sender hash chain txs storage
     InvMsg hashes     -> onInv sender hashes chain txs storage
     GetDataMsg hash   -> onGetData sender hash chain txs storage
 
-onGetBlocks :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> Maybe InvItem -> BlockChain (Block a) -> [STx a] -> MVar (BlockChain (Block a)) -> Process ()
+onGetBlocks :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> Maybe InvItem -> BlockChain (Block a) -> [STx a] -> MVar (BlockChain (Block a)) -> LoggingT Process ()
 onGetBlocks sender msg chain txs storage = case msg of
   (Just (InvBlock, hash)) -> do
-    liftIO $ putStrLn "Getblocks with initial received"
-    sendBlockRange sender (Just hash) chain
+    $(logInfo) "Getblocks with initial received"
+    lift $ sendBlockRange sender (Just hash) chain
     mainLoop chain txs storage
   (Just (InvTx, _)) -> do
-    liftIO $ putStrLn "Getblocks with TX received, ignoring..."
+    $(logInfo) "Getblocks with TX received, ignoring..."
     mainLoop chain txs storage
   Nothing -> do
-    liftIO $ putStrLn "Getblocks for the first time received"
-    sendBlockRange sender Nothing chain
+    $(logInfo) "Getblocks for the first time received"
+    lift $ sendBlockRange sender Nothing chain
     mainLoop chain txs storage
 
-onInv :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> [InvItem] -> BlockChain (Block a) -> [STx a] -> MVar (BlockChain (Block a)) -> Process ()
+onInv :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> [InvItem] -> BlockChain (Block a) -> [STx a] -> MVar (BlockChain (Block a)) -> LoggingT Process ()
 onInv sender hashes chain txs storage = do
-  liftIO $ putStrLn $ "Received InvMsg with hashes " ++ show hashes
-  liftIO $ putStrLn "Going to add missing blocks"
-  newChain <- addMissingBlocks sender blockHashes chain
-  liftIO $ putStrLn "Going to add missing tx"
-  _newTxs <- addMissingTxs sender txHashes chain txs
-  liftIO $ putStrLn $ "New chain looks like " ++ show newChain
+  $(logInfo) $ "Received InvMsg with hashes " `T.append` (T.pack . show) hashes
+  $(logInfo) "Going to add missing blocks"
+  newChain <- lift $ addMissingBlocks sender blockHashes chain
+  $(logInfo) "Going to add missing tx"
+  _newTxs <- lift $ addMissingTxs sender txHashes chain txs
+  $(logInfo) $ "New chain looks like " `T.append` (T.pack . show) newChain
   mainLoop newChain txs storage
   where
     blockHashes = filter ((== InvBlock) . fst) hashes
     txHashes = filter ((== InvTx) . fst) hashes
 
-onGetData :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> InvItem -> BlockChain (Block a) -> [STx a] -> MVar (BlockChain (Block a)) -> Process ()
+onGetData :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> InvItem -> BlockChain (Block a) -> [STx a] -> MVar (BlockChain (Block a)) -> LoggingT Process ()
 onGetData sender hash chain txs storage = do
-  liftIO $ putStrLn $ "Received GetData with hash " ++ show hash
-  sendBlockData sender hash chain
+  $(logInfo) $ "Received GetData with hash " `T.append` (T.pack . show) hash
+  lift $ sendBlockData sender hash chain
   mainLoop chain txs storage
 
 sendBlockRange :: ProcessId -> Maybe Hash -> BlockChain (Block a) -> Process ()

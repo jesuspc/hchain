@@ -14,11 +14,13 @@ import           Hchain.Client.Chain                as Chain
 import           Hchain.Client.CommandLineInterface as CommandLine
 
 import           Control.Concurrent.MVar
+import           Control.Monad.Logger
 
 start :: (Show a, Typeable a, Binary a, BContent a) => HostName -> ServiceName -> [String] -> BlockChain (Block a) -> MVar (BlockChain (Block a)) -> IO ()
 start host port seeds chain storage = P2P.bootstrap host port (map P2P.makeNodeId seeds) initRemoteTable mainProcess
   where
+    mainProcess :: Process ()
     mainProcess = do
-      loopPid <- spawnLocal $ Chain.spawnProcess chain storage
+      loopPid <- spawnLocal $ runFileLoggingT "log/application.log" $ Chain.spawnProcess chain storage
       -- _commandLinePid <- spawnLocal $ CommandLine.spawnProcess loopPid
       return ()
