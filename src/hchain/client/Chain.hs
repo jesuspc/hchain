@@ -1,8 +1,8 @@
 module Hchain.Client.Chain (spawnProcess) where
 
-import           Control.Concurrent              (threadDelay)
-import qualified Control.Distributed.Backend.P2P as P2P
-import           Control.Distributed.Process     as DP
+import           Control.Concurrent                           (threadDelay)
+import qualified Control.Distributed.Backend.P2P              as P2P
+import           Control.Distributed.Process                  as DP
 
 import           Data.Binary
 import           Data.Typeable
@@ -10,9 +10,10 @@ import           Data.Typeable
 import           Hchain.BlockChain
 import           Hchain.Client.Protocol
 
-import           Data.List                       (find)
+import           Data.List                                    (find)
 
 import           Control.Concurrent.MVar
+import           Control.Distributed.Process.Extras.SystemLog
 
 processTypeId :: String
 processTypeId = "chain"
@@ -21,18 +22,21 @@ spawnProcess :: (Show a, Typeable a, Binary a, BContent a) => BlockChain (Block 
 spawnProcess chain storage = do
   liftIO $ threadDelay 1000000
 
-  liftIO $ putStrLn $ "My chain looks like " ++ show chain
+  info logChannel ("My chain looks like " ++ show chain :: String)
 
   newChain <- getSelfPid >>= connectToNetwork chain
   getSelfPid >>= register processTypeId
 
   _ <- liftIO $ putMVar storage chain
 
+  debug logChannel ("Booting up..." :: String)
+
   mainLoop newChain [] storage
 
 connectToNetwork :: (Show a, Typeable a, Binary a, BContent a) => BlockChain (Block a) -> ProcessId -> Process (BlockChain (Block a))
 connectToNetwork chain pid = do
-  liftIO $ putStrLn "Sending connection request"
+  debug logChannel ("Sending connection request" :: String)
+
   P2P.nsendCapable processTypeId (pid, GetBlocksMsg (lastBlockHash chain))
   return chain
   where
@@ -41,9 +45,7 @@ connectToNetwork chain pid = do
 
 mainLoop :: (Show a, Typeable a, Binary a, BContent a) => BlockChain (Block a) -> [STx a] -> MVar (BlockChain (Block a)) -> Process ()
 mainLoop chain txs storage = do
-  liftIO $ putStrLn "START Putting Mvar"
   _ <- liftIO $ swapMVar storage chain
-  liftIO $ putStrLn "FIN putting Mvar"
   (sender, msg) <- expect :: Process (ProcessId, ProtocolMsg)
 
   case msg of
@@ -54,25 +56,25 @@ mainLoop chain txs storage = do
 onGetBlocks :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> Maybe InvItem -> BlockChain (Block a) -> [STx a] -> MVar (BlockChain (Block a)) -> Process ()
 onGetBlocks sender msg chain txs storage = case msg of
   (Just (InvBlock, hash)) -> do
-    liftIO $ putStrLn "Getblocks with initial received"
+    info logChannel ("Getblocks with initial received" :: String)
     sendBlockRange sender (Just hash) chain
     mainLoop chain txs storage
   (Just (InvTx, _)) -> do
-    liftIO $ putStrLn "Getblocks with TX received, ignoring..."
+    info logChannel ("Getblocks with TX received, ignoring..." :: String)
     mainLoop chain txs storage
   Nothing -> do
-    liftIO $ putStrLn "Getblocks for the first time received"
+    info logChannel ("Getblocks for the first time received" :: String)
     sendBlockRange sender Nothing chain
     mainLoop chain txs storage
 
 onInv :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> [InvItem] -> BlockChain (Block a) -> [STx a] -> MVar (BlockChain (Block a)) -> Process ()
 onInv sender hashes chain txs storage = do
-  liftIO $ putStrLn $ "Received InvMsg with hashes " ++ show hashes
-  liftIO $ putStrLn "Going to add missing blocks"
+  info logChannel ("Received InvMsg with hashes " ++ show hashes :: String)
+  debug logChannel ("Going to add missing blocks" :: String)
   newChain <- addMissingBlocks sender blockHashes chain
-  liftIO $ putStrLn "Going to add missing tx"
+  debug logChannel ("Going to add missing tx" :: String)
   _newTxs <- addMissingTxs sender txHashes chain txs
-  liftIO $ putStrLn $ "New chain looks like " ++ show newChain
+  debug logChannel ("New chain looks like " ++ show newChain :: String)
   mainLoop newChain txs storage
   where
     blockHashes = filter ((== InvBlock) . fst) hashes
@@ -80,7 +82,7 @@ onInv sender hashes chain txs storage = do
 
 onGetData :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> InvItem -> BlockChain (Block a) -> [STx a] -> MVar (BlockChain (Block a)) -> Process ()
 onGetData sender hash chain txs storage = do
-  liftIO $ putStrLn $ "Received GetData with hash " ++ show hash
+  info logChannel ("Received GetData with hash " ++ show hash :: String)
   sendBlockData sender hash chain
   mainLoop chain txs storage
 
@@ -93,7 +95,7 @@ sendBlockRange pid mh chain =
       hashes = firstHashes 500 . selector $ chain
   in do
     self <- getSelfPid
-    liftIO $ putStrLn ("Going to send hashes " ++ show hashes)
+    info logChannel ("Going to send hashes " ++ show hashes :: String)
     DP.send pid (self, InvMsg (map bInvItem hashes))
 
 addMissingTxs :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> [InvItem] -> BlockChain (Block a) -> [STx a] -> Process [STx a]
@@ -130,18 +132,19 @@ addToTxs chain txs txGetter = do
 addToChain :: (Show a, Typeable a, Binary a, BContent a) => Process (BlockChain (Block a)) -> Process (Maybe (Block a)) -> Process (BlockChain (Block a))
 addToChain chain blockGetter = do
   self <- getSelfPid
-  liftIO $ putStrLn "Getting block"
+
+  debug logChannel ("Getting block" :: String)
   mblock <- blockGetter
   c <- chain
   case mblock of
     Just block -> case addValidBlock block c of
                     Just nchain -> do
                       -- Cancel mining if needed, remove txs that were present in the block
-                      liftIO $ putStrLn $ "Adding block" ++ show block
+                      debug logChannel ("Adding block" ++ show block :: String)
                       P2P.nsendCapable processTypeId (self, InvMsg [bInvItem $ _bHash block])
                       return nchain
                     Nothing     -> do
-                      liftIO $ putStrLn $ "Can't add block" ++ show block
+                      debug logChannel ("Can't add block" ++ show block :: String)
                       return c
     Nothing -> return c
 
@@ -150,7 +153,7 @@ getBlock sender inv = do
   self <- getSelfPid
   DP.send sender (self, GetDataMsg inv)
   (_sender, block) <- expect :: (Typeable a, Binary a, BContent a) => Process (ProcessId, Maybe (Block a))
-  liftIO $ putStrLn ("received block " ++ show block)
+  info logChannel ("received block " ++ show block :: String)
   return block
 
 getTx :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> InvItem -> Process (Maybe (STx a))
@@ -170,7 +173,7 @@ sendBlockData :: (Show a, Typeable a, Binary a, BContent a) => ProcessId -> InvI
 sendBlockData pid (InvBlock, h) chain = do
   let blockData = find ((== h) . _bHash) chain
   self <- getSelfPid
-  liftIO $ putStrLn $ "Going to send block data for hash" ++ show h ++ " | " ++ show blockData
+  info logChannel ("Going to send block data for hash" ++ show h ++ " | " ++ show blockData :: String)
   DP.send pid (self, blockData)
 sendBlockData _ _ _ = return ()
 
